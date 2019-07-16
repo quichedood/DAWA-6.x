@@ -6,17 +6,15 @@ DAWA is an Arduino datalogger (and laptimer) shield for your motorbike.
 It records 10 times per seconds in a CSV file lots of information.
 
 # What's new in v6
-* __New PCB__ : v6 is a standalone PCB. v5 was a shield which needs Arduino M0
-IMU (9 axis sensor) is now on a separate PCB
-Infrared temperature sensors are now autodetected
-Bigger OLED screen
-OLED connector (SPI) is compatible with 2.4" 240x320 color LCD
-Add 4 LEDS and 4 buttons to allow configuration and use without smartphone and Bluetooth
-Navigation menu system
-New 3D printed enclosure with
-All connectors are now on the same side (bottom)
-GPS SMA connector
-Rechargeable battery for GPS memory
+* __New PCB__ : DAWA v6 is now a standalone PCB (Atmel SAMD21 chip like Arduino M0). v5 was a shield which needs an Arduino M0
+* __New IMU__ : MPU-9250 is now used. This IMU is on a secondary PCB with his own µproc (Atmel SAMD21)
+* __New OLED screen__ : A little bit bigger (1.3" vs 0.96"). The screen connector (SPI) is compatible with 2.4" 240x320 color LCD
+* __New enclosure__ : A brand new 3D printed enclosure
+* __Sensors autodetection__ : Infrared temperature sensors are now autodetected
+* __Navigation__ : Add a navigation menu system and 4 buttons to allow configuration and use without smartphone and Bluetooth
+* __Lights__ : Add 4 LEDS for specific events (best time on lap for example)
+* __Connectors__ : All connectors are now on the same side (bottom), GPS connector is now SMA
+* __GPS battery__ : Rechargeable LIR 2025 Battery
 
 # What information is logged ?
 * __Raw data acquisition__ : On Triumph bikes and many others, ECU values can be directly read (I personnaly use : RPM, SPEED, GEAR POSITION, THROTTLE and BRAKE state)
