@@ -6,7 +6,7 @@ DAWA is an Arduino datalogger (and laptimer) shield for your motorbike.
 It records 10 times per seconds in a CSV file lots of information.
 
 # What's new in v6
-v6 is a standalone PCB. v5 was a shield which needs Arduino M0
+* __New PCB__ : v6 is a standalone PCB. v5 was a shield which needs Arduino M0
 IMU (9 axis sensor) is now on a separate PCB
 Infrared temperature sensors are now autodetected
 Bigger OLED screen
