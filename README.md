@@ -48,31 +48,31 @@ Vous voulez un maximum de fonctionnalités, pouvoir faire évoluer un projet lib
 * __Entrées additionnelles__ : Vous pouvez mesurer 2 entrées analogiques et 2 entrées numériques supplémentaires (capteurs de suspension par exemple)
 
 # Où est-ce enregistré ?
-Tout est stocké sur une carte micro SD.
-10 fois par seconde, une nouvelle ligne est créée dans un fichier CSV. Cette ligne contient toutes les valeurs de données séparées par un point-virgule.
+Tout est stocké sur une carte micro SD.  
+10 fois par seconde, une nouvelle ligne est créée dans un fichier CSV. Cette ligne contient toutes les valeurs de données séparées par un point-virgule.  
 Les valeurs actuelles sont affichées en temps réel sur l’écran OLED joint.
 
 # Peut-il être utilisé comme un chronomètre ?
 OUI ! Depuis la v4 et l'intégration d'une puce GPS 10Hz, des fonctions de chronométrage sont disponibles.
 
 # Comment ça marche ?
-Rien de plus simple !
-Un bouton pour démarrer l'enregistrement et un pour l'arrêter :)
-Un fichier CSV est créé à chaque nouvel enregistrement.
+Rien de plus simple !  
+Un bouton pour démarrer l'enregistrement et un pour l'arrêter :)  
+Un fichier CSV est créé à chaque nouvel enregistrement.  
 
 # Qu'en est-il des fonctions de chronométrage
-Un peu plus compliqué, vous devez mettre un fichier nommé "TRACKS.CSV" sur la carte SD.
-Ce fichier contiendra le nom du circuit et les coordonnées de la ligne d'arrivée, une ligne par circuit:
+Un peu plus compliqué, vous devez mettre un fichier nommé "TRACKS.CSV" sur la carte SD.  
+Ce fichier contiendra le nom du circuit et les coordonnées de la ligne d'arrivée, une ligne par circuit:  
 `<trackname>;<finishline lat. A>;<finishline lon. A>;<finishline lat. B>;<finishline lon. B>`  
 `CAROLE;489799930;25224350;489800230;25226330`  
-Pour conserver la précision, la latitude et la longitude doivent être converties en nombres entiers (multiplier par 10 000 000).
+Pour conserver la précision, la latitude et la longitude doivent être converties en nombres entiers (multiplier par 10 000 000).  
 Au début de l’enregistrement, la piste la plus proche est automatiquement choisie.
 
 # Vous avez dit Bluetooth?
-La connexion Bluetooth est utile dans ces 2 cas:
-- Vous venez de terminer votre session sur piste et vous voulez connaître les temps/meilleurs tours
-- Avant d'utiliser DAWA, certains paramètres peuvent être ajustés, utilisez la console Bluetooth pour les configurer !
-
+La connexion Bluetooth est utile dans ces 2 cas:  
+- Vous venez de terminer votre session sur piste et vous voulez connaître les temps/meilleurs tours  
+- Avant d'utiliser DAWA, certains paramètres peuvent être ajustés, utilisez la console Bluetooth pour les configurer !  
+  
 J'utilise "Serial Bluetooth Terminal" sur Androïd. Connectez-vous et tapez "help" pour voir toutes les commandes disponibles
 
 # Evolutions
