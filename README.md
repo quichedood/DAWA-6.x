@@ -15,15 +15,15 @@ Chaque moto est différente, il faudra sur une autre moto :
 
 * __Je peux l'assembler moi même ?__
 Aucun problème, attention néanmoins, il vous faut au minimum :
-- Le circuit imprimé (je peux le fournir, j'en ai quelques uns en stock)
-- Un programmateur pour les 2 µproc Atmel SAMD21 (Atmel ICE BASIC par exemple)
-- Une station de soudure à l'air chaud (indispensable pour souder l'IMU)
+    - Le circuit imprimé (je peux le fournir, j'en ai quelques uns en stock)
+    - Un programmateur pour les 2 µproc Atmel SAMD21 (Atmel ICE BASIC par exemple)
+    - Une station de soudure à l'air chaud (indispensable pour souder l'IMU)
 
 * __Combien ça coute ?__
 Grossièrement, voici ce que ça me coûte :
-- PCB : ~10€
-- Composants : ~90€
-- Autres (impression 3D, la journée passée à l'assembler) : à vous de juger
+    - PCB : ~10€
+    - Composants : ~90€
+    - Autres (impression 3D, la journée passée à l'assembler) : à vous de juger
 
 Certes, ça reste moins cher que ce que l'on peut trouver dans le commerce (Starlane, Alfano, 3DMS) mais ce n'est clairement comparable.
 Vous voulez un vrai chrono, utilisable à la sortie de sa boite, passez votre chemin et dirigez vous vers les produits du commerce.
