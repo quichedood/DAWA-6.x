@@ -1,4 +1,69 @@
-# DAWA-6.1
+# DAWA-6.1 - FR (See below for US)
+
+Site web officiel (FR) : http://dawa.panik-po.com/
+
+DAWA est un système de chronométrage et d'acquisition de données pour votre moto.
+Il enregistre les données 10x par seconde dans un fichier CSV.
+
+# Les nouveautés de la v6
+* __Nouveau circuit imprimé__ : DAWA v6 est désormais un circuit imprimé autonome (puce Atmel SAMD21 comme l'Arduino M0). La v5 était un module qui se branchait sur un Arduino M0
+* __Nouveau capteur de position__ : Le capteurs 9 axes MPU-9250 est maintenant utilisé. Ce capteur est monté sur un circuit imprimé secondaire avec son propre µproc (Atmel SAMD21)
+* __Nouvel écran OLED__ : Un peu plus grand (1.3" vs 0.96"). Le connecteur d’écran (SPI) est compatible avec les écrans LCD couleur 2,4" 240x320
+* __Nouveau boitier__ : Un tout nouveau boîtier imprimé en 3D
+* __Autodetection des capteurs__ : Les capteurs de température infrarouges sont maintenant détectés automatiquement
+* __Navigation__ : Ajout d'un système de menu de navigation et 4 boutons pour permettre la configuration et l'utilisation sans smartphone ni Bluetooth
+* __LEDs__ : Ajout de 4 LEDs pour des événements spécifiques (meilleur temps au tour par exemple)
+* __Connecteurs__ : tous les connecteurs sont maintenant du même côté (en bas), le connecteur GPS est maintenant de type SMA (à visser)
+* __Batterie GPS__ : Batterie rechargeable LIR 2025
+
+# Quelles informations sont enregistrées ?
+* __Acquisition de données bruts__ : Sur les motos Triumph et beaucoup d’autres, les valeurs du calculateur peuvent être lues directement (j’utilise personnellement: RPM, vitesse, position poignée de gaz, rapport engagé et frein)
+* __Position de la moto__ : Un capteur à 9 axes (MPU-9250) est utilisé pour stocker les G et j'espère que bientôt, le roulis et le tangage
+* __Position de la moto__ : Une puce GPS UBLOX 10Hz récupère les coordonnées GPS en temps réel
+* __Température infrarouge__ : Vous pouvez brancher jusqu'à 6 capteurs de température infrarouge (pneus ou t° au sol, par exemple).
+* __Entrées additionnelles__ : Vous pouvez mesurer 2 entrées analogiques et 2 entrées numériques supplémentaires (capteurs de suspension par exemple)
+
+# Où est-ce enregistré ?
+Tout est stocké sur une carte micro SD.
+10 fois par seconde, une nouvelle ligne est créée dans un fichier CSV. Cette ligne contient toutes les valeurs de données séparées par un point-virgule.
+Les valeurs actuelles sont affichées en temps réel sur l’écran OLED joint.
+
+# Peut-il être utilisé comme un chronomètre ?
+OUI ! Depuis la v4 et l'intégration d'une puce GPS 10Hz, des fonctions de chronométrage sont disponibles.
+
+# Comment ça marche ?
+Rien de plus simple !
+Un bouton pour démarrer l'enregistrement et un pour l'arrêter :)
+Un fichier CSV est créé à chaque nouvel enregistrement.
+
+# Qu'en est-il des fonctions de chronométrage
+Un peu plus compliqué, vous devez mettre un fichier nommé "TRACKS.CSV" sur la carte SD.
+Ce fichier contiendra le nom du circuit et les coordonnées de la ligne d'arrivée, une ligne par circuit:
+`<trackname>;<finishline lat. A>;<finishline lon. A>;<finishline lat. B>;<finishline lon. B>`  
+`CAROLE;489799930;25224350;489800230;25226330`  
+Pour conserver la précision, la latitude et la longitude doivent être converties en nombres entiers (multiplier par 10 000 000).
+Au début de l’enregistrement, la piste la plus proche est automatiquement choisie.
+
+# Vous avez dit Bluetooth?
+La connexion Bluetooth est utile dans ces 2 cas:
+- Vous venez de terminer votre session sur piste et vous voulez connaître les temps/meilleurs tours
+- Avant d'utiliser DAWA, certains paramètres peuvent être ajustés, utilisez la console Bluetooth pour les configurer !
+
+J'utilise "Serial Bluetooth Terminal" sur Androïd. Connectez-vous et tapez "help" pour voir toutes les commandes disponibles
+
+# Evolutions
+* __Temps intermédiaire__ : Ajout de la gestion des temps intermédiaires
+
+# Bugs connus
+* __Angle d'inclinaison__ : Le composant est présent, l'algorithme aussi mais les valeurs dérivent dans le temps. C'est une problématique récurrente.
+
+# Contenu du référentiel
+* /3D Case - Pièces Fusion 360 et fichiers STL pour l'impression 3D
+* /Arduino - Le fichier .ino que vous devez insérer dans l’Arduino M0
+* /Documentation - Quelques informations sur ce projet (FR)
+* /Eagle - Tous les fichiers Eagle (schémas, PCB/Gerber, bibliothèques, liste de composants)
+
+# DAWA-6.1 - US
 
 French official website project : http://dawa.panik-po.com/
 
