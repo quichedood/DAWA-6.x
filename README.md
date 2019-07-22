@@ -9,9 +9,9 @@ Il enregistre les données 10x par seconde dans un fichier CSV.
 * __Comment sont récupérées les données ?__
 Pas de prise OBD, protocole trop lent sur ma "veille" moto de 2009. Je récupère les informations directement sur le faisceau du calculateur.
 Chaque moto est différente, il faudra sur une autre moto :
- - Identifier les signaux (RPM, vitesse, position poignée de gaz, rapport engagé et frein)
- - Vérifier la forme des signaux (RPM = signal carré, poignée de gaz = signal analogique, etc.)
- - Eventuellement adapter le code au niveau de la programmation si le signal est complètement différent
+    - Identifier les signaux (RPM, vitesse, position poignée de gaz, rapport engagé et frein)
+    - Vérifier la forme des signaux (RPM = signal carré, poignée de gaz = signal analogique, etc.)
+    - Eventuellement adapter le code au niveau de la programmation si le signal est complètement différent
 
 * __Je peux l'assembler moi même ?__
 Aucun problème, attention néanmoins, il vous faut au minimum :
