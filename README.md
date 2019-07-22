@@ -18,7 +18,7 @@ Il enregistre les données 10x par seconde dans un fichier CSV.
 
 # Quelles informations sont enregistrées ?
 * __Acquisition de données bruts__ : Sur les motos Triumph et beaucoup d’autres, les valeurs du calculateur peuvent être lues directement (j’utilise personnellement: RPM, vitesse, position poignée de gaz, rapport engagé et frein)
-* __Position de la moto__ : Un capteur à 9 axes (MPU-9250) est utilisé pour stocker les G et j'espère que bientôt, le roulis et le tangage
+* __Atitude de la moto__ : Un capteur à 9 axes (MPU-9250) est utilisé pour stocker les G et j'espère que bientôt, le roulis et le tangage
 * __Position de la moto__ : Une puce GPS UBLOX 10Hz récupère les coordonnées GPS en temps réel
 * __Température infrarouge__ : Vous pouvez brancher jusqu'à 6 capteurs de température infrarouge (pneus ou t° au sol, par exemple).
 * __Entrées additionnelles__ : Vous pouvez mesurer 2 entrées analogiques et 2 entrées numériques supplémentaires (capteurs de suspension par exemple)
