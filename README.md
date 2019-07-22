@@ -6,20 +6,20 @@ DAWA est un système de chronométrage et d'acquisition de données pour votre m
 Il enregistre les données 10x par seconde dans un fichier CSV.
 
 # Q&A rapide
-* __Comment sont récupérées les données ?__
+* __Comment sont récupérées les données ?__  
 Pas de prise OBD, protocole trop lent sur ma "veille" moto de 2009. Je récupère les informations directement sur le faisceau du calculateur.
 Chaque moto est différente, il faudra sur une autre moto :
     - Identifier les signaux (RPM, vitesse, position poignée de gaz, rapport engagé et frein)
     - Vérifier la forme des signaux (RPM = signal carré, poignée de gaz = signal analogique, etc.)
     - Eventuellement adapter le code au niveau de la programmation si le signal est complètement différent
 
-* __Je peux l'assembler moi même ?__
+* __Je peux l'assembler moi même ?__  
 Aucun problème, attention néanmoins, il vous faut au minimum :
     - Le circuit imprimé (je peux le fournir, j'en ai quelques uns en stock)
     - Un programmateur pour les 2 µproc Atmel SAMD21 (Atmel ICE BASIC par exemple)
     - Une station de soudure à l'air chaud (indispensable pour souder l'IMU)
 
-* __Combien ça coute ?__
+* __Combien ça coute ?__  
 Grossièrement, voici ce que ça me coûte :
     - PCB : ~10€
     - Composants : ~90€
