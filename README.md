@@ -23,7 +23,7 @@ Aucun problème, attention néanmoins, il vous faut au minimum :
 Grossièrement, voici ce que ça me coûte :
     - PCB : ~10€
     - Composants : ~90€
-    - Autres (impression 3D, la journée passée à l'assembler) : à vous de juger
+    - Autres (impression 3D, résine pour les sondes de t°, la journée passée à assembler un exemplaire) : à vous de juger
 
 Certes, ça reste moins cher que ce que l'on peut trouver dans le commerce (Starlane, Alfano, 3DMS) mais ce n'est clairement comparable.
 Vous voulez un vrai chrono, utilisable à la sortie de sa boite, passez votre chemin et dirigez vous vers les produits du commerce.
