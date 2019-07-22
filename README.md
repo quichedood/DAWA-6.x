@@ -25,8 +25,8 @@ Grossièrement, voici ce que ça me coûte :
     - Composants : ~90€
     - Autres (impression 3D, résine pour les sondes de t°, la journée passée à assembler un exemplaire) : à vous de juger
 
-Certes, ça reste moins cher que ce que l'on peut trouver dans le commerce (Starlane, Alfano, 3DMS) mais ce n'est clairement comparable.
-Vous voulez un vrai chrono, utilisable à la sortie de sa boite, passez votre chemin et dirigez vous vers les produits du commerce.
+Certes, ça reste moins cher que ce que l'on peut trouver dans le commerce (Starlane, Alfano, 3DMS) mais ce n'est clairement comparable.  
+Vous voulez un vrai chrono, utilisable à la sortie de sa boite, passez votre chemin et dirigez vous vers les produits du commerce.  
 Vous voulez un maximum de fonctionnalités, pouvoir faire évoluer un projet libre et avez quelques notions en électronique/développement, ce projet est pour vous :)
 
 # Les nouveautés de la v6
