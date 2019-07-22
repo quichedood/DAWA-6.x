@@ -5,6 +5,30 @@ Site web officiel (FR) : http://dawa.panik-po.com/
 DAWA est un système de chronométrage et d'acquisition de données pour votre moto.
 Il enregistre les données 10x par seconde dans un fichier CSV.
 
+# Q&A rapide
+* __Comment sont récupérées les données ?__
+Pas de prise OBD, protocole trop lent sur ma "veille" moto de 2009. Je récupère les informations directement sur le faisceau du calculateur.
+Chaque moto est différente, il faudra sur une autre moto :
+- Identifier les signaux (RPM, vitesse, position poignée de gaz, rapport engagé et frein)
+- Vérifier la forme des signaux (RPM = signal carré, poignée de gaz = signal analogique, etc.)
+- Eventuellement adapter le code au niveau de la programmation si le signal est complètement différent
+
+* __Je peux l'assembler moi même ?__
+Aucun problème, attention néanmoins, il vous faut au minimum :
+- Le circuit imprimé (je peux le fournir, j'en ai quelques uns en stock)
+- Un programmateur pour les 2 µproc Atmel SAMD21 (Atmel ICE BASIC par exemple)
+- Une station de soudure à l'air chaud (indispensable pour souder l'IMU)
+
+* __Combien ça coute ?__
+Grossièrement, voici ce que ça me coûte :
+- PCB : ~10€
+- Composants : ~90€
+- Autres (impression 3D, la journée passée à l'assembler) : à vous de juger
+
+Certes, ça reste moins cher que ce que l'on peut trouver dans le commerce (Starlane, Alfano, 3DMS) mais ce n'est clairement comparable.
+Vous voulez un vrai chrono, utilisable à la sortie de sa boite, passez votre chemin et dirigez vous vers les produits du commerce.
+Vous voulez un maximum de fonctionnalités, pouvoir faire évoluer un projet libre et avez quelques notions en électronique/développement, ce projet est pour vous :)
+
 # Les nouveautés de la v6
 * __Nouveau circuit imprimé__ : DAWA v6 est désormais un circuit imprimé autonome (puce Atmel SAMD21 comme l'Arduino M0). La v5 était un module qui se branchait sur un Arduino M0
 * __Nouveau capteur de position__ : Le capteurs 9 axes MPU-9250 est maintenant utilisé. Ce capteur est monté sur un circuit imprimé secondaire avec son propre µproc (Atmel SAMD21)
