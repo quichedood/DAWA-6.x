@@ -91,7 +91,7 @@ J'utilise "Serial Bluetooth Terminal" sur Androïd. Connectez-vous et tapez "hel
 
 French official website project : http://dawa.panik-po.com/
 
-DAWA is an Arduino datalogger (and laptimer) shield for your motorbike.
+DAWA is an Arduino datalogger and laptimer for your motorbike.
 It records 10 times per seconds in a CSV file lots of information.
 
 # What's new in v6
