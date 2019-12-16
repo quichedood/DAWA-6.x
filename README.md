@@ -1,4 +1,4 @@
-# DAWA-6.1 - FR (See below for US)
+# DAWA-6.x - FR (See below for US)
 
 Site web officiel (FR) : http://dawa.panik-po.com/
 
@@ -87,7 +87,7 @@ J'utilise "Serial Bluetooth Terminal" sur Androïd. Connectez-vous et tapez "hel
 * /Documentation - Quelques informations sur ce projet (FR)
 * /Eagle - Tous les fichiers Eagle (schémas, PCB/Gerber, bibliothèques, liste de composants)
 
-# DAWA-6.1 - US
+# DAWA-6.x - US
 
 French official website project : http://dawa.panik-po.com/
 
