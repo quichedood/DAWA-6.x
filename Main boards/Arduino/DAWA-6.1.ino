@@ -1,5 +1,5 @@
 /**************************************************************
-  DAWA 6.0 (Arduino M0 - Onboard SAMD21G)
+  DAWA 6.1 (Arduino M0 - Onboard SAMD21G)
   Bootloader have to be burned on new chip with for example Atmel ICE
   Triumph motorbikes laptimer/datalogger
   Edouard PIGEON - 2019
@@ -11,14 +11,14 @@
   Angle inclinaison
   Ajouter nom circuit au nom du fichier
   Ajouter bluetooth init test
-  Ajouter gestion temps partiels
-  Gestion menu/boutons
+  Select tracks > view tracks
+  View last laptimes
 **************************************************************/
 
 /**************************************************************
   Enable debug output to serial
 **************************************************************/
-//#define DEBUG // /!\ DAWA will wait serial connection to start
+#define DEBUG // /!\ DAWA will wait serial connection to start
 
 /**************************************************************
   Debug to serial
@@ -117,10 +117,9 @@ extEEPROM eep(kbits_2, 1, 8); // I2C Address 0x50
   NeoGPS library
   https://github.com/SlashDevin/NeoGPS
 
-  GPSport.h :
-  #define GPS_PORT Serial3
-  #define GPS_PORT_NAME "GPS_PORT"
-  #define DEBUG_PORT Serial
+  NeoTime.h :
+  static const uint16_t s_epoch_year    = POSIX_EPOCH_YEAR;
+  static const uint8_t  s_epoch_weekday = POSIX_EPOCH_WEEKDAY;
 **************************************************************/
 #include <NMEAGPS.h>
 HardwareSerial & GPS_PORT = Serial5;
@@ -181,6 +180,7 @@ const uint8_t gearOffset = 20; // Each gear has a corresponding value, this valu
 const uint8_t maxMlx = 6; // Max MLX chips that could be declared (could be more but need to add object instances L.300, just before setup())
 const uint8_t mlxEepAddr = 0x0E; // Internal EEPROM address on MLX chips
 const uint8_t firstMlxAddress = 0x01; // First given MLX I2C address (then +1 on each discovered MLX sensor)
+const uint8_t maxHomepageScreens = 4; // The number of defined homepage screens
 
 // GPS & Timing
 const float rescaleGPS = 10000000.0; // We use "long" for GPS coordinates to keep precision ("float" on Arduino have only 6 decimal digits of precision) ### https://gis.stackexchange.com/questions/8650/measuring-accuracy-of-latitude-and-longitude
@@ -224,6 +224,10 @@ static const uint8_t fallHour    =  1;
 // Texts
 const static char ERROR_PROVIDE_NUMBER[] PROGMEM = "Error : you have to provide a number !";
 char *inputsLabel[] = {"DIGI_SQR_RPM", "DIGI_SQR_OPT_1", "DIGI_BRAKE", "DIGI_OPT_1", "ANA_GEAR", "ANA_THROTTLE", "ANA_OPT_1", "ANA_OPT_2"};
+char *inputsSexyLabel[] = {"RPM", "SQR_OPT", "BRAKE", "D_OPT1", "GEAR", "THROTTLE", "A_OPT1", "A_OPT2"};
+
+// 9-Axis slave module (I2C)
+#define I2C_SLAVE_ADDRESS 18 // I2C slave address
 
 /**************************************************************
   #############################################
@@ -240,7 +244,15 @@ uint16_t inAnaGear; // Digital analog input (GEAR)
 uint16_t inAnaThrottle; // Digital analog input (THROTTLE)
 uint16_t inAnaOpt1; // Digital analog input (optional)
 uint16_t inAnaOpt2; // Digital analog input (optional)
-uint8_t enabledInputsBits; // Store enabled inputs (use binary values, ex : 00000011 > inAnaOpt1 and inAnaOpt2 enabled)
+uint8_t enabledInputsBits; // Store enabled inputs (use binary values, ex : 11000000 > inAnaOpt1 and inAnaOpt2 enabled)
+// BIT 0 = DIGI_SQR_RPM
+// BIT 1 = DIGI_SQR_OPT_1
+// BIT 2 = DIGI_BRAKE
+// BIT 3 = DIGI_OPT_1
+// BIT 4 = ANA_GEAR
+// BIT 5 = ANA_THROTTLE
+// BIT 6 = ANA_OPT_1
+// BIT 7 = ANA_OPT_2
 uint8_t tmpComp, bitShift; // Used to compare values for enabled inputs checks
 char gear; // Store GEAR name (N, 1, 2, 3 ...)
 uint16_t inAnaGearCalib[7]; // Calibration values for GEAR input
@@ -248,7 +260,6 @@ uint16_t inAnaThrottleMax, inAnaOpt1Max, inAnaOpt2Max; // Max values for analog 
 uint8_t gearNCheck = 0;
 
 // SD Card
-SdFat sd;
 File logFile; // One line every 100ms with all detailed data
 File lapFile; // One line per lap with laptime
 File trackFile; // One line per track with GPS coordinates of finish line
@@ -266,7 +277,7 @@ uint32_t lastPinRead = 0, lastLCDupdate = 0, lastSdSync = 0, fixCount = 0, elaps
 float coordsDistance, totalDistance, tToFl; // Time To Finish Line
 
 // Bluetooth
-char c, cmdBuffer[16]; // Buffers
+char cmdBuffer[16]; // Buffers
 
 // Infrared temp sensor
 uint8_t mlxAddresses[maxMlx]; // Store each MLX I2C addresses
@@ -282,8 +293,7 @@ uint8_t mcp1PinTriggeredId; // Which pin of the MCP1 is triggered (detect which 
 bool mcp1PinTriggeredState; // Button is pressed or released ?
 uint32_t buttonPressed = 0; // Time in ms a button is pressed
 uint32_t lastUpdate = 0, firstUpdate = 0; // used to calculate integration interval
-bool showSubMenu31 = false; // bluetooth menu
-uint8_t showScreenId = 0; // Which screen are we displaying (0 = homepage, 1 = navigation menu, 2 ... 254 = specific pages)
+uint8_t showScreenId = 0; // Which screen are we displaying (0-9 = homepage, 10 = navigation menu, 11 ... 254 = specific pages)
 
 #ifdef DEBUG
 uint32_t Now = 0; // used to calculate integration interval
@@ -291,9 +301,11 @@ uint32_t count = 0, sumCount = 0; // used to control display output rate
 float deltat = 0.0f, sum = 0.0f; // integration interval for both filter schemes
 #endif
 
-/*
-* Function prototypes
-*/
+// 9-Axis slave module (I2C)
+float floatReceived;
+float mpuOrientation[4];
+
+// Function prototypes (Menu)
 void printNav(uint8_t typeId);
 
 /**************************************************************
@@ -309,18 +321,19 @@ MLX90614 mlx[maxMlx] = {MLX90614(firstMlxAddress), MLX90614(firstMlxAddress + 1)
 Adafruit_MCP23017 MCP1;
 Adafruit_MCP23017 MCP2;
 
-// OLED
-SSD1306AsciiSpi OLED_PORT; // 128x64 LCD OLED
+// OLED OR LCD
+SSD1306AsciiSpi OLED_PORT; // 128x64 OLED Screen
+//Adafruit_ILI9341 OLED_PORT = Adafruit_ILI9341(TFT_CS, TFT_DC); // ILI9341 320x240 LCD Screen (need DMA and/or faster CPU/SPI to have smooth prints)
 
-// LCD
-//Adafruit_ILI9341 OLED_PORT = Adafruit_ILI9341(TFT_CS, TFT_DC);
+// SD CARD
+SdFat sd;
 
 // MENU
 class MyRenderer : public MenuComponentRenderer {
   public:
     void render(Menu const& menu) const {
       OLED_PORT.clear();
-      if (showScreenId == 1) {
+      if (showScreenId == 10) {
         OLED_PORT.setInvertMode(true);
         if (menu.get_name() == "") {
           OLED_PORT.println("DAWA Main Menu");
@@ -359,13 +372,14 @@ class MyRenderer : public MenuComponentRenderer {
 MyRenderer my_renderer;
 
 // Forward declarations
-void on_menu_1_1_1_1_selected(MenuComponent* p_menu_component);
-void on_menu_1_1_1_2_selected(MenuComponent* p_menu_component);
-void on_menu_1_1_1_3_selected(MenuComponent* p_menu_component);
-void on_menu_1_1_2_1_selected(MenuComponent* p_menu_component);
-void on_menu_1_1_2_2_selected(MenuComponent* p_menu_component);
-void on_menu_1_1_2_3_selected(MenuComponent* p_menu_component);
-void on_menu_1_1_2_4_selected(MenuComponent* p_menu_component);
+void on_menu_0_selected(MenuComponent* p_menu_component);
+void on_menu_1_2_2_3_selected(MenuComponent* p_menu_component);
+void on_menu_1_2_3_3_selected(MenuComponent* p_menu_component);
+void on_menu_1_2_4_4_selected(MenuComponent* p_menu_component);
+void on_menu_1_3_1_2_selected(MenuComponent* p_menu_component);
+void on_menu_1_3_2_2_selected(MenuComponent* p_menu_component);
+void on_menu_1_3_3_2_selected(MenuComponent* p_menu_component);
+void on_menu_1_3_4_2_selected(MenuComponent* p_menu_component);
 void on_menu_1_2_1_1_selected(MenuComponent* p_menu_component);
 void on_menu_1_2_1_2_selected(MenuComponent* p_menu_component);
 void on_menu_1_2_2_1_selected(MenuComponent* p_menu_component);
@@ -393,17 +407,8 @@ const String format_float(const float value) {
 
 // Menu variables
 MenuSystem ms(my_renderer);
+MenuItem menu_0("Start/stop", &on_menu_0_selected);
 Menu menu_1("Configuration");
-Menu menu_1_1("En./dis. inputs");
-Menu menu_1_1_1("Default inputs");
-MenuItem menu_1_1_1_1("GEAR", &on_menu_1_1_1_1_selected);
-MenuItem menu_1_1_1_2("THROTTLE", &on_menu_1_1_1_2_selected);
-MenuItem menu_1_1_1_3("RPM", &on_menu_1_1_1_3_selected);
-Menu menu_1_1_2("Opt. inputs");
-MenuItem menu_1_1_2_1("SQR 1", &on_menu_1_1_2_1_selected);
-MenuItem menu_1_1_2_2("DIGI 1", &on_menu_1_1_2_2_selected);
-MenuItem menu_1_1_2_3("ANALOG 1", &on_menu_1_1_2_3_selected);
-MenuItem menu_1_1_2_4("ANALOG 2", &on_menu_1_1_2_4_selected);
 Menu menu_1_2("Default inputs");
 Menu menu_1_2_1("MLX");
 MenuItem menu_1_2_1_1("View values", &on_menu_1_2_1_1_selected);
@@ -411,22 +416,29 @@ MenuItem menu_1_2_1_2("Autodetect", &on_menu_1_2_1_2_selected);
 Menu menu_1_2_2("GEAR");
 MenuItem menu_1_2_2_1("View raw values", &on_menu_1_2_2_1_selected);
 MenuItem menu_1_2_2_2("Calibrate", &on_menu_1_2_2_2_selected);
+MenuItem menu_1_2_2_3("Enable/disable", &on_menu_1_2_2_3_selected);
 Menu menu_1_2_3("THROTTLE");
 MenuItem menu_1_2_3_1("View raw values", &on_menu_1_2_3_1_selected);
 MenuItem menu_1_2_3_2("Calibrate", &on_menu_1_2_3_2_selected);
+MenuItem menu_1_2_3_3("Enable/disable", &on_menu_1_2_3_3_selected);
 Menu menu_1_2_4("RPM");
 MenuItem menu_1_2_4_1("View values", &on_menu_1_2_4_1_selected);
 NumericMenuItem menu_1_2_4_2("Flywheel teeth", &on_menu_1_2_4_2_selected, 1, 1, 50, 1, format_int);
 NumericMenuItem menu_1_2_4_3("RPM ratio", &on_menu_1_2_4_3_selected, 100, 100, 200, 1, format_int);
+MenuItem menu_1_2_4_4("Enable/disable", &on_menu_1_2_4_4_selected);
 Menu menu_1_3("Opt. inputs");
 Menu menu_1_3_1("SQR 1");
 MenuItem menu_1_3_1_1("Calibrate", &on_menu_1_3_1_1_selected);
+MenuItem menu_1_3_1_2("Enable/disable", &on_menu_1_3_1_2_selected);
 Menu menu_1_3_2("DIGI 1");
 MenuItem menu_1_3_2_1("Calibrate", &on_menu_1_3_2_1_selected);
+MenuItem menu_1_3_2_2("Enable/disable", &on_menu_1_3_2_2_selected);
 Menu menu_1_3_3("ANALOG 1");
 MenuItem menu_1_3_3_1("Calibrate", &on_menu_1_3_3_1_selected);
+MenuItem menu_1_3_3_2("Enable/disable", &on_menu_1_3_3_2_selected);
 Menu menu_1_3_4("ANALOG 2");
 MenuItem menu_1_3_4_1("Calibrate", &on_menu_1_3_4_1_selected);
+MenuItem menu_1_3_4_2("Enable/disable", &on_menu_1_3_4_2_selected);
 Menu menu_2("Tracks");
 MenuItem menu_2_1("Select track", &on_menu_2_1_selected);
 MenuItem menu_3("About", &on_menu_3_selected);
@@ -446,49 +458,47 @@ void setup() {
   delay(500);
 
 #ifdef DEBUG
-  while (!DEBUG_PORT);
+  //while (!DEBUG_PORT);
   DEBUG_PORT.println(F("DEBUG is enabled"));
 #endif
 
   /**************************************************************
     Menu Init
   **************************************************************/
+  ms.get_root_menu().add_item(&menu_0);
   ms.get_root_menu().add_menu(&menu_1);
-  menu_1.add_menu(&menu_1_1);  
-    menu_1_1.add_menu(&menu_1_1_1);
-      menu_1_1_1.add_item(&menu_1_1_1_1);
-      menu_1_1_1.add_item(&menu_1_1_1_2);
-      menu_1_1_1.add_item(&menu_1_1_1_3);
-    menu_1_1.add_menu(&menu_1_1_2);
-      menu_1_1_2.add_item(&menu_1_1_2_1);
-      menu_1_1_2.add_item(&menu_1_1_2_2);
-      menu_1_1_2.add_item(&menu_1_1_2_3);
-      menu_1_1_2.add_item(&menu_1_1_2_4);
-  menu_1.add_menu(&menu_1_2); 
-    menu_1_2.add_menu(&menu_1_2_1);
-      menu_1_2_1.add_item(&menu_1_2_1_1);
-      menu_1_2_1.add_item(&menu_1_2_1_2);
-    menu_1_2.add_menu(&menu_1_2_2);
-      menu_1_2_2.add_item(&menu_1_2_2_1);
-      menu_1_2_2.add_item(&menu_1_2_2_2);
-    menu_1_2.add_menu(&menu_1_2_3);
-      menu_1_2_3.add_item(&menu_1_2_3_1);
-      menu_1_2_3.add_item(&menu_1_2_3_2);
-    menu_1_2.add_menu(&menu_1_2_4);
-      menu_1_2_4.add_item(&menu_1_2_4_1);
-      menu_1_2_4.add_item(&menu_1_2_4_2);
-      menu_1_2_4.add_item(&menu_1_2_4_3);   
+  menu_1.add_menu(&menu_1_2);
+  menu_1_2.add_menu(&menu_1_2_1);
+  menu_1_2_1.add_item(&menu_1_2_1_1);
+  menu_1_2_1.add_item(&menu_1_2_1_2);
+  menu_1_2.add_menu(&menu_1_2_2);
+  menu_1_2_2.add_item(&menu_1_2_2_3);
+  menu_1_2_2.add_item(&menu_1_2_2_2);
+  menu_1_2_2.add_item(&menu_1_2_2_1);
+  menu_1_2.add_menu(&menu_1_2_3);
+  menu_1_2_3.add_item(&menu_1_2_3_3);
+  menu_1_2_3.add_item(&menu_1_2_3_2);
+  menu_1_2_3.add_item(&menu_1_2_3_1);
+  menu_1_2.add_menu(&menu_1_2_4);
+  menu_1_2_4.add_item(&menu_1_2_4_4);
+  menu_1_2_4.add_item(&menu_1_2_4_2);
+  menu_1_2_4.add_item(&menu_1_2_4_3);
+  menu_1_2_4.add_item(&menu_1_2_4_1);
   menu_1.add_menu(&menu_1_3);
-    menu_1_3.add_menu(&menu_1_3_1);
-        menu_1_3_1.add_item(&menu_1_3_1_1);
-     menu_1_3.add_menu(&menu_1_3_2);   
-        menu_1_3_2.add_item(&menu_1_3_2_1);
-      menu_1_3.add_menu(&menu_1_3_3); 
-        menu_1_3_3.add_item(&menu_1_3_3_1);
-      menu_1_3.add_menu(&menu_1_3_4); 
-        menu_1_3_4.add_item(&menu_1_3_4_1);
+  menu_1_3.add_menu(&menu_1_3_1);
+  menu_1_3_1.add_item(&menu_1_3_1_2);
+  menu_1_3_1.add_item(&menu_1_3_1_1);
+  menu_1_3.add_menu(&menu_1_3_2);
+  menu_1_3_2.add_item(&menu_1_3_2_2);
+  menu_1_3_2.add_item(&menu_1_3_2_1);
+  menu_1_3.add_menu(&menu_1_3_3);
+  menu_1_3_3.add_item(&menu_1_3_3_2);
+  menu_1_3_3.add_item(&menu_1_3_3_1);
+  menu_1_3.add_menu(&menu_1_3_4);
+  menu_1_3_4.add_item(&menu_1_3_4_2);
+  menu_1_3_4.add_item(&menu_1_3_4_1);
   ms.get_root_menu().add_menu(&menu_2);
-  menu_2.add_item(&menu_2_1);  
+  menu_2.add_item(&menu_2_1);
   ms.get_root_menu().add_item(&menu_3);
   ms.get_root_menu().add_item(&menu_4);
 
@@ -604,7 +614,7 @@ void setup() {
   **************************************************************/
   OLED_PORT.print(F("EEPROM:"));
   BLUETOOTH_PORT.print(F("EEPROM : "));
-  if (!eep.begin(twiClock100kHz) == 0) {
+  if (!eep.begin(eep.twiClock100kHz) == 0) {
     OLED_PORT.println(F("        FAILED"));
     BLUETOOTH_PORT.println(F("FAILED"));
 #ifdef DEBUG
@@ -790,170 +800,29 @@ void loop() {
   /**************************************************************
     Action on start/stop button
   **************************************************************/
-  if (buttonPressed > 0 && mcp1PinTriggeredId == 3 && mcp1PinTriggeredState == 1 && showScreenId == 0) { // Call menu (short press on button 3, first left)
+  if (buttonPressed > 0 && mcp1PinTriggeredId == 3 && mcp1PinTriggeredState == 1 && showScreenId < 10) { // Call menu (short press on button "MENU" from home screen)
     buttonPressed = 0;
-    showScreenId = 1;
+    showScreenId = 10;
     ms.display();
   }
 
-  if (buttonPressed > 0 && mcp1PinTriggeredId == 1 && mcp1PinTriggeredState == 1 && showScreenId > 1) { // Back to menu (short press on button "BACK")
+  if (buttonPressed > 0 && mcp1PinTriggeredId == 1 && mcp1PinTriggeredState == 1 && showScreenId > 10) { // Back to menu (short press on button "BACK")
+    if (showScreenId == 100) { // If laptimer is running we stop it ("STOP" button pressed when laptimer running)
+      stopLaptimer();
+    }
     buttonPressed = 0;
-    showScreenId = 1;
+    showScreenId = 10;
     ms.display();
   }
 
-
-  /*
-    if (buttonPressed > 500 && mcp1PinTriggeredId == 3 && mcp1PinTriggeredState == 0) { // long press on power button (500ms)
-      buttonPressed = 0;
-      SdFile::dateTimeCallback(dateTimeSd);
-      if (isRunning) { // If laptimer is running ...
-        **************************************************************
-          ******************* STOP RECORDING HERE *******************
-        **************************************************************
-        isRunning = false; // ... we stop recording
-        logFile.close(); // Close file on SDcard
-        lapFile.close(); // Close file on SDcard
-        OLED_PORT.clear();
-        BLUETOOTH_PORT.println(F("[Session stopped !]"));
-      } else { // If laptimer is NOT running ...
-        if (fix_data.valid.location) { // We need GPS fix before starting
-          **************************************************************
-            ******************* START RECORDING HERE *******************
-          **************************************************************
-          OLED_PORT.clear();
-          OLED_PORT.println(F("Running ..."));
-          BLUETOOTH_PORT.println(F("[Start new session !]"));
-
-          **************************************************************
-            Select nearest track from the file "TRACKS.csv" on sdcard
-          **************************************************************
-          recordTrackData = false;
-          trackFile = sd.open("TRACKS.csv", FILE_READ);
-          if (trackFile) {
-            while (trackFile.available()) {
-              csvReadUint16(&trackFile, &trackId, csvDelim);
-              csvReadText(&trackFile, trackName, sizeof(trackName), csvDelim); // One line per track : "1;CAROLE;489799930;25224350;489800230;25226330" (<trackname>;<startline_a_lat>;<startline_a_lon>;<startline_b_lat>;<startline_b_lon>)
-              csvReadInt32(&trackFile, &flineLat1, csvDelim);                  // Points A & B should be at the left and at the right of the finishline (a few meters)
-              csvReadInt32(&trackFile, &flineLon1, csvDelim);
-              csvReadInt32(&trackFile, &flineLat2, csvDelim);
-              csvReadInt32(&trackFile, &flineLon2, csvDelim);
-
-              // Calculate distance between 2 GPS coordinates
-              coordsDistance = gpsDistance(fix_data.latitudeL(), fix_data.longitudeL(), flineLat1, flineLon1) / 1000;
-
-              // If you are on a known track, then we select it
-              if (coordsDistance <= maxTrackDistance) {
-                recordTrackData = true;
-                OLED_PORT.print(trackName);
-                OLED_PORT.print(F(" ("));
-                OLED_PORT.print(coordsDistance, 1);
-                OLED_PORT.println(F("km)"));
-                BLUETOOTH_PORT.print(F("Track selected : "));
-                BLUETOOTH_PORT.print(trackName);
-                BLUETOOTH_PORT.print(F(" ("));
-                BLUETOOTH_PORT.print(coordsDistance, 1);
-                BLUETOOTH_PORT.println(F("km)"));
-                break; // Break here so last read values are the good ones !
-              }
-            }
-            trackFile.close();
-          }
-          if (recordTrackData == false) {
-            OLED_PORT.println(F("No track file !"));
-            BLUETOOTH_PORT.println(F("No track file !"));
-          }
-
-          **************************************************************
-            Create new datafile : history file (append)
-          **************************************************************
-          if (recordTrackData == true) { // No track = no history !
-            sprintf(filename, "HISTORY.csv");
-            if (historyFile.open(filename, O_CREAT | O_APPEND | O_WRITE)) {
-              historyFile.print(fix_data.dateTime);
-              historyFile.print(F(";"));
-              historyFile.print(fix_data.dateTime.year);
-              if (fix_data.dateTime.month < 10) historyFile.print(F("0")); // Leading zeros
-              historyFile.print(fix_data.dateTime.month);
-              if (fix_data.dateTime.date < 10) historyFile.print(F("0")); // Leading zeros
-              historyFile.print(fix_data.dateTime.date);
-              historyFile.print(F("-"));
-              if (fix_data.dateTime.hours < 10) historyFile.print(F("0")); // Leading zeros
-              historyFile.print(fix_data.dateTime.hours);
-              if (fix_data.dateTime.minutes < 10) historyFile.print(F("0")); // Leading zeros
-              historyFile.print(fix_data.dateTime.minutes);
-              if (fix_data.dateTime.seconds < 10) historyFile.print(F("0")); // Leading zeros
-              historyFile.print(fix_data.dateTime.seconds);
-              historyFile.print(F(";"));
-              historyFile.println(trackId);
-              historyFile.close(); // Close file on SDcard
-              BLUETOOTH_PORT.print(F("Append file : "));
-              BLUETOOTH_PORT.println(filename);
-            } else {
-              initError();
-            }
-          }
-
-          **************************************************************
-            Create new datafile : log file (create new)
-          **************************************************************
-          sprintf(filename, "%02u%02u%02u-%02u%02u%02u.csv", fix_data.dateTime.year, fix_data.dateTime.month, fix_data.dateTime.date, fix_data.dateTime.hours, fix_data.dateTime.minutes, fix_data.dateTime.seconds);
-          if (logFile.open(filename, O_CREAT | O_WRITE | O_EXCL)) {
-            // Time, distance and lap (always printed)
-            logFile.print(F("Time;Distance;Lap;"));
-
-            // Digital & analog inputs (printed if enabled)
-            bitShift = B00000001;
-            for (uint8_t i = 0; i < 8; i++) {
-              tmpComp = bitShift & enabledInputsBits;
-              if (tmpComp == bitShift) {
-                logFile.print(inputsLabel[i]);
-                logFile.print(F(";"));
-              }
-              bitShift = bitShift << 1;
-            }
-
-            // KPH (GPS), Orientation, ambiant temperature (always printed)
-            logFile.print(F("KPH;Heading;Roll;Temp;"));
-
-            // Infrared temperature (printed if enabled)
-            for (uint8_t i = 0; i < maxMlx; i++) {
-              if (mlxAddresses[i] != 0x00) {
-                logFile.print(F("IRTemp"));
-                logFile.print(i);
-                logFile.print(F(";"));
-              }
-            }
-
-            // Latitude & longitude (always printed)
-            logFile.println(F("Latitude;Longitude"));
-            BLUETOOTH_PORT.print(F("Create new file : "));
-            BLUETOOTH_PORT.println(filename);
-          } else {
-            initError();
-          }
-
-          **************************************************************
-            Create new datafile : laptime file (create new)
-          **************************************************************
-          sprintf(filename, "%02u%02u%02u-%02u%02u%02u-LAPTIMES.csv", fix_data.dateTime.year, fix_data.dateTime.month, fix_data.dateTime.date, fix_data.dateTime.hours, fix_data.dateTime.minutes, fix_data.dateTime.seconds);
-          if (lapFile.open(filename, O_CREAT | O_WRITE | O_EXCL)) {
-            BLUETOOTH_PORT.print(F("Create new file : "));
-            BLUETOOTH_PORT.println(filename);
-          } else {
-            initError();
-          }
-
-          **************************************************************
-            Init some vars
-          **************************************************************
-          isRunning = true; // ... we start recording
-          lapCounter = 0; // Lap 0 (we start from paddocks)
-          totalDistance = 0;
-          addFinishLog = false;
-        }
-      }
-    }*/
+  if (buttonPressed > 0 && mcp1PinTriggeredId == 1 && mcp1PinTriggeredState == 1 && showScreenId < 10) { // Switch homepage screen
+    buttonPressed = 0;
+    showScreenId++;
+    if (showScreenId > maxHomepageScreens - 1) {
+      showScreenId = 0;
+    }
+    ms.display();
+  }
 
   /**************************************************************
     Get GPS frames through serial port (RX/TX)
@@ -970,12 +839,23 @@ void loop() {
     fixCount++;
 
     /**************************************************************
-      Read INPUTS
+      Read 9-axis slave module
+    **************************************************************/
+    Wire.requestFrom(I2C_SLAVE_ADDRESS, 16); // Read 16 bytes (4 floats) from slave 9-axis sensor device
+    while (Wire.available()) {
+      for (int i = 0; i < 4; i++) {
+        Wire.readBytes((byte*)&floatReceived, 4);
+        mpuOrientation[i] = floatReceived; // Store values in array to use them later
+      }
+    }
+
+    /**************************************************************
+      Read all enabled INPUTS
     **************************************************************/
     elapsedTime = millis() - lastPinRead; // Used to have precise measures on RPM and SPEED
     lastPinRead = millis(); // Reset last pin read
     bitShift = B00000001;
-    for (uint8_t i = 0; i < 8; i++) {
+    for (uint8_t i = 0; i < 8; i++) {  // Read values of enabled inputs only
       tmpComp = bitShift & enabledInputsBits;
       if (tmpComp == bitShift) {
         switch (i) {
@@ -1056,6 +936,11 @@ void loop() {
     }
 
     /**************************************************************
+      Print data on OLED screen
+    **************************************************************/
+    showData(showScreenId); // 0 = Home, 10 = menu navigation, 11 to 254 = menu actions
+
+    /**************************************************************
       Sync files on SDcard every 300 fixes (300x100ms = 30sec) to avoid dataloss on power failure
     **************************************************************/
     if (isRunning && (fixCount - lastSdSync >= 300)) {
@@ -1067,19 +952,23 @@ void loop() {
 
     /**************************************************************
       1 second loop (every 10 fixes > 10x100ms = 1sec), could be used for :
-      - Displaying on OLED screen
       - Get values with a low refresh rate like ambiant temperature
+      - Printing debug information
       - ...
     **************************************************************/
     if (fixCount - lastLCDupdate >= 10) {
       lastLCDupdate = fixCount;
-
 #ifdef DEBUG
       DEBUG_PORT.print("rate = ");
       DEBUG_PORT.print((float)sumCount / sum, 2);
       DEBUG_PORT.println(" Hz");
       sumCount = 0;
       sum = 0;
+
+      DEBUG_PORT.print(F("MPU : "));
+      DEBUG_PORT.print(mpuOrientation[0], 0);
+      DEBUG_PORT.print(F(" / "));
+      DEBUG_PORT.println(mpuOrientation[1], 0);
 #endif
 
       /**************************************************************
@@ -1093,30 +982,6 @@ void loop() {
             BLUETOOTH_PORT.println(":Err MLX");
             }*/
         }
-      }
-
-      /**************************************************************
-        Read ambiant temperature
-      **************************************************************/
-      //temperature = bno.getTemp();
-
-      /**************************************************************
-        Read BNO calibration state
-      **************************************************************/
-      //bno.getCalibration(&calSys, &calGyro, &calAccel, &calMag);
-
-      if (isRunning) {
-        /**************************************************************
-          Print data on OLED screen when laptimer IS running - NOT TESTED
-        **************************************************************/
-        // No other data is printed on LCD because it can be time consumming and we'll loose some GPS frames
-      } else {
-        /**************************************************************
-          Print data on OLED screen when laptimer IS NOT running
-        **************************************************************/
-        showData(showScreenId); // 0 = Home, 1 = menu navigation, 2 to 254 = menu actions
-        //printData1(fix_data, OLED_PORT); // Select one of the 2 options to print different data on OLED screen
-        //printData2(fix_data, OLED_PORT)
       }
     }
 
@@ -1220,7 +1085,7 @@ void loop() {
       logFile.print(lapCounter);
       logFile.print(F(";"));
       bitShift = B00000001;
-      for (uint8_t i = 0; i < 8; i++) {
+      for (uint8_t i = 0; i < 8; i++) { // Write values of enabled inputs only
         tmpComp = bitShift & enabledInputsBits;
         if (tmpComp == bitShift) {
           switch (i) {
@@ -1272,9 +1137,9 @@ void loop() {
       logFile.print(F(";"));
       logFile.print(fix_data.heading(), 1);
       logFile.print(F(";"));
-      logFile.print("ROLL");
+      logFile.print(mpuOrientation[0], 0);
       logFile.print(F(";"));
-      logFile.print("TEMP");
+      logFile.print(mpuOrientation[1], 0);
       logFile.print(F(";"));
       for (uint8_t i = 0; i < maxMlx; i++) {
         if (mlxAddresses[i] != 0x00) {
@@ -1293,65 +1158,10 @@ void loop() {
       }
     } else { // isRunning == false
       /**************************************************************
-        Get bluetooth commands (only when not running)
+        Read bluetooth commands (only when not running)
         Wait for orders
       **************************************************************/
-      while (BLUETOOTH_PORT.available()) {
-        c = processCharInput(cmdBuffer, BLUETOOTH_PORT.read());
-        if (c == '\n') {
-          if (showSubMenu31 == true) {
-            if (strcmp("c", cmdBuffer) != 0) {
-              fChangeEnabledInputs(atoi(cmdBuffer));
-            }
-            showSubMenu31 = false;
-          } else {
-            if (strcmp("help", cmdBuffer) == 0) {
-              fGetHelp();
-            }
-            if (strcmp("1", cmdBuffer) == 0) {
-              fGetData();
-            }
-            if (strcmp("2", cmdBuffer) == 0) {
-              fGetLastRuns(12);
-            }
-            if (strcmp("3", cmdBuffer) == 0) {
-              fGetLastRuns(48);
-            }
-            if (strcmp("4", cmdBuffer) == 0) {
-              fGetTrackBest();
-            }
-            if (strcmp("20", cmdBuffer) == 0) {
-              fCalThrottle(BLUETOOTH_PORT);
-            }
-            if (strcmp("21", cmdBuffer) == 0) {
-              fCalAnaOpt1();
-            }
-            if (strcmp("22", cmdBuffer) == 0) {
-              fCalAnaOpt2();
-            }
-            if (strcmp("23", cmdBuffer) == 0) {
-              fCalGear(BLUETOOTH_PORT);
-            }
-            if (strcmp("24", cmdBuffer) == 0) {
-              fCal9axis();
-            }
-            if (strcmp("30", cmdBuffer) == 0) {
-              fShowEnabledInputs();
-            }
-            if (strcmp("31", cmdBuffer) == 0) {
-              BLUETOOTH_PORT.println(F("Enter new value (c to cancel) : "));
-              showSubMenu31 = true;
-            }
-            if (strcmp("40", cmdBuffer) == 0) {
-              fListMlxAddr();
-            }
-            if (strcmp("41", cmdBuffer) == 0) {
-              fDetectMlx(BLUETOOTH_PORT);
-            }
-          }
-          cmdBuffer[0] = 0;
-        }
-      }
+      readBluetoothCommand();
     }
   }
 }

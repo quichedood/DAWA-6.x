@@ -1,36 +1,210 @@
-// Menu callback function
-void on_menu_1_1_1_1_selected(MenuComponent* p_menu_component) {
+/**************************************************************
+  #stopLaptimer > Stop laptimer
+**************************************************************/
+void stopLaptimer() {
+  SdFile::dateTimeCallback(dateTimeSd);
+  isRunning = false; // ... we stop recording
+  logFile.close(); // Close file on SDcard
+  lapFile.close(); // Close file on SDcard
   OLED_PORT.clear();
+  BLUETOOTH_PORT.println(F("[Session stopped !]"));
+}
+
+/**************************************************************
+  #startLaptimer > Start laptimer (init multiple var, auto select nearest track, create files on SD card)
+**************************************************************/
+void startLaptimer() {
+  SdFile::dateTimeCallback(dateTimeSd);
+  if (fix_data.valid.location) { // We need GPS fix before starting
+    OLED_PORT.clear();
+    OLED_PORT.println(F("Auto-select track ..."));
+    BLUETOOTH_PORT.println(F("[Start new session !]"));
+
+    /**************************************************************
+      Select nearest track from the file "TRACKS.csv" on sdcard
+    **************************************************************/
+    recordTrackData = false;
+    trackFile = sd.open("TRACKS.csv", FILE_READ);
+    if (trackFile) {
+      while (trackFile.available()) {
+        csvReadUint16(&trackFile, &trackId, csvDelim);
+        csvReadText(&trackFile, trackName, sizeof(trackName), csvDelim); // One line per track : "1;CAROLE;489799930;25224350;489800230;25226330" (<trackname>;<startline_a_lat>;<startline_a_lon>;<startline_b_lat>;<startline_b_lon>)
+        csvReadInt32(&trackFile, &flineLat1, csvDelim);                  // Points A & B should be at the left and at the right of the finishline (a few meters)
+        csvReadInt32(&trackFile, &flineLon1, csvDelim);
+        csvReadInt32(&trackFile, &flineLat2, csvDelim);
+        csvReadInt32(&trackFile, &flineLon2, csvDelim);
+
+        // Calculate distance between 2 GPS coordinates
+        coordsDistance = gpsDistance(fix_data.latitudeL(), fix_data.longitudeL(), flineLat1, flineLon1) / 1000;
+
+        // If you are on a known track, then we select it
+        if (coordsDistance <= maxTrackDistance) {
+          recordTrackData = true;
+          OLED_PORT.print(trackName);
+          OLED_PORT.print(F(" ("));
+          OLED_PORT.print(coordsDistance, 1);
+          OLED_PORT.println(F("km)"));
+          BLUETOOTH_PORT.print(F("Track selected : "));
+          BLUETOOTH_PORT.print(trackName);
+          BLUETOOTH_PORT.print(F(" ("));
+          BLUETOOTH_PORT.print(coordsDistance, 1);
+          BLUETOOTH_PORT.println(F("km)"));
+          break; // Break here so last read values are the good ones !
+        }
+      }
+      trackFile.close();
+    }
+    if (recordTrackData == false) {
+      OLED_PORT.println(F("No track file !"));
+      BLUETOOTH_PORT.println(F("No track file !"));
+    }
+
+    /**************************************************************
+      Create new datafile : history file (append)
+    **************************************************************/
+    if (recordTrackData == true) { // No track = no history !
+      sprintf(filename, "HISTORY.csv");
+      if (historyFile.open(filename, O_CREAT | O_APPEND | O_WRITE)) {
+        historyFile.print(fix_data.dateTime);
+        historyFile.print(F(";"));
+        historyFile.print(fix_data.dateTime.year);
+        if (fix_data.dateTime.month < 10) historyFile.print(F("0")); // Leading zeros
+        historyFile.print(fix_data.dateTime.month);
+        if (fix_data.dateTime.date < 10) historyFile.print(F("0")); // Leading zeros
+        historyFile.print(fix_data.dateTime.date);
+        historyFile.print(F("-"));
+        if (fix_data.dateTime.hours < 10) historyFile.print(F("0")); // Leading zeros
+        historyFile.print(fix_data.dateTime.hours);
+        if (fix_data.dateTime.minutes < 10) historyFile.print(F("0")); // Leading zeros
+        historyFile.print(fix_data.dateTime.minutes);
+        if (fix_data.dateTime.seconds < 10) historyFile.print(F("0")); // Leading zeros
+        historyFile.print(fix_data.dateTime.seconds);
+        historyFile.print(F(";"));
+        historyFile.println(trackId);
+        historyFile.close(); // Close file on SDcard
+        BLUETOOTH_PORT.print(F("Append file : "));
+        BLUETOOTH_PORT.println(filename);
+      } else {
+        initError();
+      }
+    }
+
+    /**************************************************************
+      Create new datafile : log file (create new)
+    **************************************************************/
+    sprintf(filename, "%02u%02u%02u-%02u%02u%02u.csv", fix_data.dateTime.year, fix_data.dateTime.month, fix_data.dateTime.date, fix_data.dateTime.hours, fix_data.dateTime.minutes, fix_data.dateTime.seconds);
+    if (logFile.open(filename, O_CREAT | O_WRITE | O_EXCL)) {
+      // Time, distance and lap (always printed)
+      logFile.print(F("Time;Distance;Lap;"));
+
+      // Digital & analog inputs (printed if enabled)
+      bitShift = B00000001;
+      for (uint8_t i = 0; i < 8; i++) {
+        tmpComp = bitShift & enabledInputsBits;
+        if (tmpComp == bitShift) {
+          logFile.print(inputsLabel[i]);
+          logFile.print(F(";"));
+        }
+        bitShift = bitShift << 1;
+      }
+
+      // KPH (GPS), Orientation, ambiant temperature (always printed)
+      logFile.print(F("KPH;Heading;Roll;Pitch;"));
+
+      // Infrared temperature (printed if enabled)
+      for (uint8_t i = 0; i < maxMlx; i++) {
+        if (mlxAddresses[i] != 0x00) {
+          logFile.print(F("IRTemp"));
+          logFile.print(i);
+          logFile.print(F(";"));
+        }
+      }
+
+      // Latitude & longitude (always printed)
+      logFile.println(F("Latitude;Longitude"));
+      BLUETOOTH_PORT.print(F("Create new file : "));
+      BLUETOOTH_PORT.println(filename);
+    } else {
+      initError();
+    }
+
+    /**************************************************************
+      Create new datafile : laptime file (create new)
+    **************************************************************/
+    sprintf(filename, "%02u%02u%02u-%02u%02u%02u-LAPTIMES.csv", fix_data.dateTime.year, fix_data.dateTime.month, fix_data.dateTime.date, fix_data.dateTime.hours, fix_data.dateTime.minutes, fix_data.dateTime.seconds);
+    if (lapFile.open(filename, O_CREAT | O_WRITE | O_EXCL)) {
+      BLUETOOTH_PORT.print(F("Create new file : "));
+      BLUETOOTH_PORT.println(filename);
+    } else {
+      initError();
+    }
+
+    /**************************************************************
+      Init some vars
+    **************************************************************/
+    isRunning = true; // ... we start recording
+    lapCounter = 0; // Lap 0 (we start from paddocks)
+    totalDistance = 0;
+    addFinishLog = false;
+  }
+}
+
+
+/**************************************************************
+  #on_menu_x_x_x_x > Functions called from navigation menu
+**************************************************************/
+void on_menu_0_selected(MenuComponent* p_menu_component) {
+  OLED_PORT.clear();
+  startLaptimer();
+  showScreenId = 100;
   delay(2000); // so we can look the result on the display
 }
-void on_menu_1_1_1_2_selected(MenuComponent* p_menu_component) {
+void on_menu_1_2_2_3_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
+  fFlipBitInputs(4, OLED_PORT);
+  fShowBitInputs(4, OLED_PORT);
   delay(2000); // so we can look the result on the display
 }
-void on_menu_1_1_1_3_selected(MenuComponent* p_menu_component) {
+void on_menu_1_2_3_3_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
+  fFlipBitInputs(5, OLED_PORT);
+  fShowBitInputs(5, OLED_PORT);
   delay(2000); // so we can look the result on the display
 }
-void on_menu_1_1_2_1_selected(MenuComponent* p_menu_component) {
+void on_menu_1_2_4_4_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
+  fFlipBitInputs(0, OLED_PORT);
+  fShowBitInputs(0, OLED_PORT);
   delay(2000); // so we can look the result on the display
 }
-void on_menu_1_1_2_2_selected(MenuComponent* p_menu_component) {
+void on_menu_1_3_1_2_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
+  fFlipBitInputs(1, OLED_PORT);
+  fShowBitInputs(1, OLED_PORT);
   delay(2000); // so we can look the result on the display
 }
-void on_menu_1_1_2_3_selected(MenuComponent* p_menu_component) {
+void on_menu_1_3_2_2_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
+  fFlipBitInputs(3, OLED_PORT);
+  fShowBitInputs(3, OLED_PORT);
   delay(2000); // so we can look the result on the display
 }
-void on_menu_1_1_2_4_selected(MenuComponent* p_menu_component) {
+void on_menu_1_3_3_2_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
+  fFlipBitInputs(6, OLED_PORT);
+  fShowBitInputs(6, OLED_PORT);
+  delay(2000); // so we can look the result on the display
+}
+void on_menu_1_3_4_2_selected(MenuComponent* p_menu_component) {
+  OLED_PORT.clear();
+  fFlipBitInputs(7, OLED_PORT);
+  fShowBitInputs(7, OLED_PORT);
   delay(2000); // so we can look the result on the display
 }
 
 void on_menu_1_2_1_1_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
-  showScreenId = 2;
+  showScreenId = 12;
 }
 
 void on_menu_1_2_1_2_selected(MenuComponent* p_menu_component) {
@@ -41,7 +215,7 @@ void on_menu_1_2_1_2_selected(MenuComponent* p_menu_component) {
 
 void on_menu_1_2_2_1_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
-  showScreenId = 3;
+  showScreenId = 13;
 }
 
 void on_menu_1_2_2_2_selected(MenuComponent* p_menu_component) {
@@ -52,7 +226,7 @@ void on_menu_1_2_2_2_selected(MenuComponent* p_menu_component) {
 
 void on_menu_1_2_3_1_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
-  showScreenId = 4;
+  showScreenId = 14;
 }
 
 void on_menu_1_2_3_2_selected(MenuComponent* p_menu_component) {
@@ -63,7 +237,7 @@ void on_menu_1_2_3_2_selected(MenuComponent* p_menu_component) {
 
 void on_menu_1_2_4_1_selected(MenuComponent* p_menu_component) {
   OLED_PORT.clear();
-  showScreenId = 5;
+  showScreenId = 15;
 }
 
 void on_menu_1_2_4_2_selected(MenuComponent* p_menu_component) {
@@ -129,10 +303,13 @@ void printNav(uint8_t typeId = 0) {
   OLED_PORT.setCursor(0, 7);
   switch (typeId) {
     case 1:
-      OLED_PORT.print(F("MENU"));
+      OLED_PORT.print(F("MENU       SCR"));
       break;
     case 2:
       OLED_PORT.print(F("           BACK"));
+      break;
+    case 3:
+      OLED_PORT.print(F("           STOP"));
       break;
     default:
       OLED_PORT.print(F(" UP | DW | BACK | OK "));
@@ -147,11 +324,34 @@ void showData(uint8_t screenId) {
   OLED_PORT.setCursor(0, 0);
   switch (screenId) {
     case 0:
-      //OLED_PORT.println(F("HOME"));
-      printDate(fix_data, OLED_PORT);
+      printDateTime(fix_data, OLED_PORT);
+      printNav(1);
+      break;
+    case 1:
+      OLED_PORT.println(F("TEMPERATURES"));
+      for (uint8_t i = 0; i < maxMlx; i++) {
+        if (mlxAddresses[i] != 0x00) {
+          OLED_PORT.print(mlxAddresses[i]);
+          OLED_PORT.print(F(":"));
+          OLED_PORT.print(mlxValues[i], 0);
+        }
+        if (i % 2 == 1) {
+          OLED_PORT.println();
+        } else {
+          OLED_PORT.print(F("   "));
+        }
+      }
       printNav(1);
       break;
     case 2:
+      printData1(fix_data, OLED_PORT);
+      printNav(1);
+      break;
+    case 3:
+      printData2(fix_data, OLED_PORT);
+      printNav(1);
+      break;
+    case 12:
       for (uint8_t i = 0; i < maxMlx; i++) {
         if (mlxAddresses[i] != 0x00) {
           OLED_PORT.print(F("MLX "));
@@ -163,7 +363,7 @@ void showData(uint8_t screenId) {
       }
       printNav(2);
       break;
-    case 3:
+    case 13:
       for (uint8_t i = 0; i < 7; i++) {
         if (i == 0) {
           OLED_PORT.print(F("N"));
@@ -183,14 +383,14 @@ void showData(uint8_t screenId) {
       OLED_PORT.println(gear);
       printNav(2);
       break;
-    case 4:
+    case 14:
       OLED_PORT.print(F("Throttle max ... "));
       OLED_PORT.println(inAnaThrottleMax);
       OLED_PORT.print(F("Throttle ... "));
       OLED_PORT.println(inAnaThrottle);
       printNav(2);
       break;
-    case 5:
+    case 15:
       OLED_PORT.print(F("Flywheel teeth ... "));
       OLED_PORT.println(rpmFlywheelTeeth);
       OLED_PORT.print(F("RPM ratio ... "));
@@ -208,6 +408,10 @@ void showData(uint8_t screenId) {
       OLED_PORT.println("dawa.panik-po.com");
       printNav(2);
       break;
+    case 100:
+      OLED_PORT.println("Running ...");
+      printNav(3);
+      break;
   }
 }
 
@@ -215,7 +419,7 @@ void showData(uint8_t screenId) {
   #handleMenuActions > Handle menu navigation
 **************************************************************/
 void handleMenuActions(uint8_t buttonTriggered) {
-  if (showScreenId == 1) {
+  if (showScreenId == 10) {
     switch (buttonTriggered) {
       case 3: // Previous item
         ms.prev();
@@ -261,14 +465,12 @@ void handleMcp1Interrupt() {
   mcp1PinTriggeredId = MCP1.getLastInterruptPin(); // Read which pin was triggered
   mcp1PinTriggeredState = MCP1.getLastInterruptPinValue(); // 0 => pressed, 1 => released
   cleanMcp1Interrupt(); // Clean interrupts
-
 #ifdef DEBUG
   DEBUG_PORT.print(F("Button "));
   DEBUG_PORT.print(mcp1PinTriggeredId);
   DEBUG_PORT.print(F(", state "));
   DEBUG_PORT.println(mcp1PinTriggeredState);
 #endif
-
   if (mcp1PinTriggeredState == 1) {
     buttonPressed = millis();
 #ifdef DEBUG
@@ -298,9 +500,6 @@ void fGetHelp() {
   BLUETOOTH_PORT.println(F("21-Calibrate Analogic Opt 1"));
   BLUETOOTH_PORT.println(F("22-Calibrate Analogic Opt 2"));
   BLUETOOTH_PORT.println(F("23-Calibrate gears"));
-  BLUETOOTH_PORT.println(F(">>> Inputs"));
-  BLUETOOTH_PORT.println(F("30-Show input ports state"));
-  BLUETOOTH_PORT.println(F("31-Enable or disable port state"));
   BLUETOOTH_PORT.println(F(">>> Infrared temp. sensors"));
   BLUETOOTH_PORT.println(F("40-Show IR sensors"));
   BLUETOOTH_PORT.println(F("41-Detect IR sensors"));
@@ -323,7 +522,7 @@ void fGetLastRuns(uint16_t sinceHours) {
       csvReadText(&historyFile, histDate, sizeof(histDate), csvDelim);
       csvReadUint16(&historyFile, &histTrackId, csvDelim);
       if (histTimestamp > (fix_data.dateTime - (sinceHours * 3600))) {
-        printDateTime(histTimestamp, BLUETOOTH_PORT);
+        //printDateTime(histTimestamp, BLUETOOTH_PORT);
         trackFile = sd.open("TRACKS.csv", FILE_READ); // Read trackfile to get track name
         if (trackFile) {
           while (trackFile.available()) {
@@ -569,52 +768,29 @@ void fResetCal9axis() {
 }
 
 /**************************************************************
-  #fChangeEnabledInputs > Change enabled inputs
+  #fFlipBitInputs > Flip one bit in inputs byte
 **************************************************************/
-void fChangeEnabledInputs(uint8_t inputBits) {
-  if (inputBits == 0) {
-    BLUETOOTH_PORT.println(ERROR_PROVIDE_NUMBER);
-    BLUETOOTH_PORT.println(F("This number shoud be the sum of values of each inputs you want to enable"));
+void fFlipBitInputs(uint8_t bitPosition, Print & OUT_PORT) {
+  uint8_t byteMask;
+  byteMask = pow(2, bitPosition);
+  enabledInputsBits ^= byteMask; // Flip bit on the selected position
+  if (EEPROM_writeAnything(30, enabledInputsBits) == sizeof(enabledInputsBits)) {
+    OUT_PORT.println(F("Input changed"));
   } else {
-    if (EEPROM_writeAnything(30, inputBits) == sizeof(inputBits)) {
-      enabledInputsBits = inputBits;
-      BLUETOOTH_PORT.println(F("New inputs state defined !"));
-      showEnabledInputs(BLUETOOTH_PORT);
-    } else {
-      BLUETOOTH_PORT.println(F("Error writing inputs state"));
-    }
+    OUT_PORT.println(F("Error writing inputs state"));
   }
 }
 
 /**************************************************************
-  #fShowEnabledInputs > Show enabled inputs
+  #fShowBitInputs > Show the state of a specific bit in inputs byte
 **************************************************************/
-void fShowEnabledInputs() {
-  showEnabledInputs(BLUETOOTH_PORT);
-}
-
-/**************************************************************
-  #showEnabledInputs > Show enabled inputs
-**************************************************************/
-void showEnabledInputs(Print & OUT_PORT) {
-  uint8_t bitShift = B00000001, tmpComp;
-  if (EEPROM_readAnything(30, enabledInputsBits) == sizeof(enabledInputsBits)) {
-    OUT_PORT.println(F("Enabled inputs state :"));
-    for (uint8_t i = 0; i < 8; i++) {
-      OUT_PORT.print(inputsLabel[i]);
-      tmpComp = bitShift & enabledInputsBits;
-      if (tmpComp == bitShift) {
-        OUT_PORT.print(F(" : ENABLED"));
-      } else {
-        OUT_PORT.print(F(" : DISABLED"));
-      }
-      OUT_PORT.print(F(" ("));
-      OUT_PORT.print(pow(2, i), 0);
-      OUT_PORT.println(F(")"));
-      bitShift = bitShift << 1;
-    }
+void fShowBitInputs(uint8_t bitPosition, Print & OUT_PORT) {
+  bool bitValue = bitRead(enabledInputsBits, bitPosition);
+  OUT_PORT.print(inputsSexyLabel[bitPosition]);
+  if (bitValue) {
+    OUT_PORT.print(F(":ENABLED"));
   } else {
-    OUT_PORT.println(F("Error reading inputs state"));
+    OUT_PORT.print(F(":DISABLED"));
   }
 }
 
@@ -635,10 +811,10 @@ void mcp2EnableOneOutput(uint8_t idOutput) {
 /**************************************************************
   #fListMlxAddr > List saved I2C address for all MLX declared chip
 **************************************************************/
-void fListMlxAddr() {
+void fListMlxAddr(Print & OUT_PORT) {
   for (uint8_t i = 0; i < maxMlx; i++) {
-    BLUETOOTH_PORT.print(F("MLX I2C address : "));
-    BLUETOOTH_PORT.println(mlxAddresses[i], HEX);
+    OUT_PORT.print(F("MLX I2C address : "));
+    OUT_PORT.println(mlxAddresses[i], HEX);
   }
 }
 
@@ -682,46 +858,10 @@ void SERCOM5_Handler() {
 }
 
 /**************************************************************
-  Output DATE+TIME based on a timestamp
-**************************************************************/
-void printDateTime(uint32_t timestamp, Print & OUT_PORT) {
-  if (day(timestamp) < 10) OUT_PORT.print(F("0")); // Leading zeros
-  OUT_PORT.print(day(timestamp));
-  OUT_PORT.print(F("/"));
-  if (month(timestamp) < 10) OUT_PORT.print(F("0")); // Leading zeros
-  OUT_PORT.print(month(timestamp));
-  OUT_PORT.print(F("/"));
-  OUT_PORT.print(year(timestamp));
-  OUT_PORT.print(F(" "));
-  if (hour(timestamp) < 10) OUT_PORT.print(F("0")); // Leading zeros
-  OUT_PORT.print(hour(timestamp));
-  OUT_PORT.print(F(":"));
-  if (minute(timestamp) < 10) OUT_PORT.print(F("0")); // Leading zeros
-  OUT_PORT.print(minute(timestamp));
-  OUT_PORT.print(F(":"));
-  if (second(timestamp) < 10) OUT_PORT.print(F("0")); // Leading zeros
-  OUT_PORT.println(second(timestamp));
-}
-
-/**************************************************************
-  #processCharInput > Build a string character by character (serial bluetooth)
-**************************************************************/
-char processCharInput(char* cmdBuffer, const char c) {
-  if (c >= 32 && c <= 126) { // Ignore control and special ascii characters
-    if (strlen(cmdBuffer) < 16) {
-      strncat(cmdBuffer, &c, 1);
-    } else {
-      return '\n';
-    }
-  }
-  return c;
-}
-
-/**************************************************************
   #initError > Triggered when initialization error (program stop and slow blinking led)
 **************************************************************/
 void initError() {
-  delay(2000); // Pause 3 sec pour lecture infos LCD
+  delay(2000); // so we can look the error on the display
   while (1) {
     //digitalWrite(ledPin, digitalRead(ledPin) ^ 1); // Quick LED blink (there's an error)
     MCP1.digitalWrite(mcp1Led1, MCP1.digitalRead(mcp1Led1) ^ 1);
@@ -940,62 +1080,32 @@ void timeSubstract(int32_t s1, int32_t cs1, int32_t s2, int32_t cs2, int32_t &re
 }
 
 /**************************************************************
-  #printDate > Print date (oled screen or bluetooth serial)
+  Output DATE+TIME based on a timestamp
 **************************************************************/
-void printDate(gps_fix & fix_data, Print & OUT_PORT) {
-  if (fix_data.valid.date && fix_data.valid.time) {
-    if (fix_data.dateTime.date < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.date);
-    OUT_PORT.print(F("/"));
-    if (fix_data.dateTime.month < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.month);
-    OUT_PORT.print(F("/"));
-    if (fix_data.dateTime.year < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.year);
-    OUT_PORT.print(F(" "));
-    if (fix_data.dateTime.hours < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.hours);
-    OUT_PORT.print(F(":"));
-    if (fix_data.dateTime.minutes < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.minutes);
-    OUT_PORT.print(F(":"));
-    if (fix_data.dateTime.seconds < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.println(fix_data.dateTime.seconds);
-  } else {
-    OUT_PORT.println(F("No GPS signal"));
-  }
+void printDateTime(gps_fix & fix_data, Print & OUT_PORT) {
+  if (fix_data.dateTime.date < 10) OUT_PORT.print(F("0")); // Leading zeros
+  OUT_PORT.print(fix_data.dateTime.date);
+  OUT_PORT.print(F("/"));
+  if (fix_data.dateTime.month < 10) OUT_PORT.print(F("0")); // Leading zeros
+  OUT_PORT.print(fix_data.dateTime.month);
+  OUT_PORT.print(F("/"));
+  OUT_PORT.print(fix_data.dateTime.year);
+  OUT_PORT.print(F(" "));
+  if (fix_data.dateTime.hours < 10) OUT_PORT.print(F("0")); // Leading zeros
+  OUT_PORT.print(fix_data.dateTime.hours);
+  OUT_PORT.print(F(":"));
+  if (fix_data.dateTime.minutes < 10) OUT_PORT.print(F("0")); // Leading zeros
+  OUT_PORT.print(fix_data.dateTime.minutes);
+  OUT_PORT.print(F(":"));
+  if (fix_data.dateTime.seconds < 10) OUT_PORT.print(F("0")); // Leading zeros
+  OUT_PORT.println(fix_data.dateTime.seconds);
 }
 
 /**************************************************************
   #printData1 > Print realtime data on one output (oled screen or bluetooth serial)
 **************************************************************/
 void printData1(gps_fix & fix_data, Print & OUT_PORT) {
-  if (fix_data.valid.date && fix_data.valid.time) {
-    if (fix_data.dateTime.date < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.date);
-    OUT_PORT.print(F("/"));
-    if (fix_data.dateTime.month < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.month);
-    OUT_PORT.print(F("/"));
-    if (fix_data.dateTime.year < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.year);
-    OUT_PORT.print(F(" "));
-    if (fix_data.dateTime.hours < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.hours);
-    OUT_PORT.print(F(":"));
-    if (fix_data.dateTime.minutes < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.minutes);
-    OUT_PORT.print(F(":"));
-    if (fix_data.dateTime.seconds < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.println(fix_data.dateTime.seconds);
-  } else {
-    OUT_PORT.println(F("No GPS signal"));
-  }
-  /*OUT_PORT.print(F("GPS:"));
-    OUT_PORT.print(fix_data.dateTime);
-    OUT_PORT.print(F("."));
-    if (fix_data.dateTime_cs < 10) OUT_PORT.print(F("0")); // Leading zeros (remember "fix_data.dateTime_cs" is an integer !!)
-    OUT_PORT.println(fix_data.dateTime_cs);*/
+  OUT_PORT.println(F("DATA ACQUISITION"));
   OUT_PORT.print(F("RPM:        "));
   OUT_PORT.println(inDigiSqrRpm);
   OUT_PORT.print(F("DIGISQR:    "));
@@ -1024,57 +1134,47 @@ void printData1(gps_fix & fix_data, Print & OUT_PORT) {
   if (inAnaOpt2 < 10) OUT_PORT.print(F("00"));
   if (inAnaOpt2 >= 10 && inAnaOpt2 < 100) OUT_PORT.print(F("0"));
   OUT_PORT.println(inAnaOpt2);
-  OUT_PORT.print(F("MLX:"));
-  for (uint8_t i = 0; i < maxMlx; i++) {
-    if (mlxAddresses[i] != 0x00) {
-      OUT_PORT.print(mlxValues[i], 0);
-      OUT_PORT.print(F(" "));
-    }
-  }
 }
 
 /**************************************************************
   #printData2 > Print realtime data on one output (oled screen or bluetooth serial)
 **************************************************************/
 void printData2(gps_fix & fix_data, Print & OUT_PORT) {
-  uint8_t bitShift = B00000001, tmpComp;
-  uint8_t printedValues = 0;
-  if (fix_data.valid.date && fix_data.valid.time) {
-    if (fix_data.dateTime.date < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.date);
-    OUT_PORT.print(F("/"));
-    if (fix_data.dateTime.month < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.month);
-    OUT_PORT.print(F("/"));
-    if (fix_data.dateTime.year < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.year);
-    OUT_PORT.print(F(" "));
-    if (fix_data.dateTime.hours < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.hours);
-    OUT_PORT.print(F(":"));
-    if (fix_data.dateTime.minutes < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.print(fix_data.dateTime.minutes);
-    OUT_PORT.print(F(":"));
-    if (fix_data.dateTime.seconds < 10) OUT_PORT.print(F("0")); // Leading zeros
-    OUT_PORT.println(fix_data.dateTime.seconds);
+  OUT_PORT.println(F("ORIENTATION"));
+  OUT_PORT.print(F("Roll:  "));
+  if (mpuOrientation[0] < 0) {
+    OUT_PORT.print(F("-"));
   } else {
-    OUT_PORT.println(F("No GPS signal"));
+    OUT_PORT.print(F("+"));
   }
-  OUT_PORT.print(F("CALIB (SGAM):"));
-  /*OUT_PORT.print(calSys);
-    OUT_PORT.print(F(";"));
-    OUT_PORT.print(calGyro);
-    OUT_PORT.print(F(";"));
-    OUT_PORT.print(calAccel);
-    OUT_PORT.print(F(";"));
-    OUT_PORT.println(calMag);*/
-
-  OUT_PORT.print(F("9AXIS:"));
-  /*OUT_PORT.print(event.orientation.x, 0);
-    OUT_PORT.print(F(";"));
-    OUT_PORT.print(event.orientation.y, 0);
-    OUT_PORT.print(F(";"));
-    OUT_PORT.println(event.orientation.z, 0);*/
+  if (abs(mpuOrientation[0]) < 10) OUT_PORT.print(F("00"));
+  if (abs(mpuOrientation[0]) >= 10) OUT_PORT.print(F("0"));
+  OUT_PORT.print(abs(mpuOrientation[0]), 0);
+  OUT_PORT.println(F(" deg"));
+  OUT_PORT.print(F("Pitch: "));
+  if (mpuOrientation[1] < 0) {
+    OUT_PORT.print(F("-"));
+  } else {
+    OUT_PORT.print(F("+"));
+  }
+  if (abs(mpuOrientation[1]) < 10) OUT_PORT.print(F("00"));
+  if (abs(mpuOrientation[1]) >= 10) OUT_PORT.print(F("0"));
+  OUT_PORT.print(abs(mpuOrientation[1]), 0);
+  OUT_PORT.println(F(" deg"));
+  OUT_PORT.print(F("Gx:    "));
+  if (mpuOrientation[2] < 0) {
+    OUT_PORT.print(F("-"));
+  } else {
+    OUT_PORT.print(F("+"));
+  }
+  OUT_PORT.println(abs(mpuOrientation[2]), 1);
+  OUT_PORT.print(F("Gy:    "));
+  if (mpuOrientation[3] < 0) {
+    OUT_PORT.print(F("-"));
+  } else {
+    OUT_PORT.print(F("+"));
+  }
+  OUT_PORT.println(abs(mpuOrientation[3]), 1);
 
   /*for (uint8_t i = 0; i < 8; i++) { // We parse the 8 analog values
     tmpComp = bitShift & anaDisabledBits;
@@ -1113,20 +1213,6 @@ void printData2(gps_fix & fix_data, Print & OUT_PORT) {
     }
     bitShift = bitShift << 1;
     }*/
-  OUT_PORT.print(F("AMB. T:"));
-  //OUT_PORT.println(temperature);
-  OUT_PORT.print(F("MLX T1:"));
-  for (uint8_t i = 0; i < maxMlx; i++) {
-    if (mlxAddresses[i] != 0x00) {
-      if (i == 2) {
-        OUT_PORT.println(mlxValues[i], 0);
-        OUT_PORT.print(F("MLX T2:"));
-      } else {
-        OUT_PORT.print(mlxValues[i], 0);
-        OUT_PORT.print(F(" "));
-      }
-    }
-  }
 }
 
 /**************************************************************
@@ -1183,4 +1269,63 @@ void adjustTime(NeoGPS::time_t & dt) {
 void dateTimeSd(uint16_t* date, uint16_t* time) {
   *date = FAT_DATE(fix_data.dateTime.year + 2000, fix_data.dateTime.month, fix_data.dateTime.date); // return date using FAT_DATE macro to format fields
   *time = FAT_TIME(fix_data.dateTime.hours, fix_data.dateTime.minutes, fix_data.dateTime.seconds); // return time using FAT_TIME macro to format fields
+}
+
+/**************************************************************
+  #processCharInput > Build a string character by character (serial bluetooth)
+**************************************************************/
+char processCharInput(char* cmdBuffer, const char c) {
+  if (c >= 32 && c <= 126) { // Ignore control and special ascii characters
+    if (strlen(cmdBuffer) < 16) {
+      strncat(cmdBuffer, &c, 1);
+    } else {
+      return '\n';
+    }
+  }
+  return c;
+}
+
+/**************************************************************
+  #readBluetoothCommand > Read bluetooth commands
+**************************************************************/
+void readBluetoothCommand() {
+  while (BLUETOOTH_PORT.available()) {
+    char c = processCharInput(cmdBuffer, BLUETOOTH_PORT.read());
+    if (c == '\n') {
+      if (strcmp("help", cmdBuffer) == 0) {
+        fGetHelp();
+      }
+      if (strcmp("1", cmdBuffer) == 0) {
+        fGetData();
+      }
+      if (strcmp("2", cmdBuffer) == 0) {
+        fGetLastRuns(12);
+      }
+      if (strcmp("3", cmdBuffer) == 0) {
+        fGetLastRuns(48);
+      }
+      if (strcmp("4", cmdBuffer) == 0) {
+        fGetTrackBest();
+      }
+      if (strcmp("20", cmdBuffer) == 0) {
+        fCalThrottle(BLUETOOTH_PORT);
+      }
+      if (strcmp("21", cmdBuffer) == 0) {
+        fCalAnaOpt1();
+      }
+      if (strcmp("22", cmdBuffer) == 0) {
+        fCalAnaOpt2();
+      }
+      if (strcmp("23", cmdBuffer) == 0) {
+        fCalGear(BLUETOOTH_PORT);
+      }
+      if (strcmp("40", cmdBuffer) == 0) {
+        fListMlxAddr(BLUETOOTH_PORT);
+      }
+      if (strcmp("41", cmdBuffer) == 0) {
+        fDetectMlx(BLUETOOTH_PORT);
+      }
+      cmdBuffer[0] = 0;
+    }
+  }
 }
